@@ -107,10 +107,6 @@ pip install -e ".[dev]"
 pytest
 ```
 
-## License
-
-[MIT](LICENSE)
-
 ## Disclaimer
 
 The data is Curvo's simulation from each index minus the fund's TER, not actual fund prices. Past performance does not guarantee future results. This is a personal analysis tool, not investment advice.
