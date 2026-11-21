@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portfolio-backtest"
+version = "0.1.0"
+description = "Backtest fixed-weight ETF portfolios and explore allocations with a Sobol study"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+qt = ["PyQt5>=5.15"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+portfolio-backtest = "portfolio_backtest.cli:main"
+portfolio-sobol = "portfolio_backtest.sobol.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
