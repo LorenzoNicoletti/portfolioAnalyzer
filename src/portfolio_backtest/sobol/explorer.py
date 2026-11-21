@@ -27,7 +27,7 @@ CLICK_RADIUS_PX = 6
 
 
 class SobolExplorer:
-    def __init__(self, study: SobolStudy, my_mix: dict[str, float], invest: float, start: str,
+    def __init__(self, study: SobolStudy, my_mix: dict[str, float], invest: float, start: str | None,
                  end: str | None, rebalance: str, filters: dict[str, tuple[float, float]] | None = None,
                  prices: pd.DataFrame | None = None):
         self.study = study
@@ -119,7 +119,7 @@ class SobolExplorer:
             self.checks[c] = CheckButtons(cax, [c], [c in self.initial_filters],
                                           frame_props={"edgecolor": "black"}, check_props={"facecolor": "red"})
             self.checks[c].labels[0].set_fontsize(9)
-            fig.text(0.775, y - 0.006, ETFS[c].name, fontsize=7, color="#777777")
+            fig.text(0.775, y - 0.006, ETFS[c].name[:30], fontsize=7, color="#777777")  # short: no overlap
             self.sliders[c] = RangeSlider(fig.add_axes([0.850, y + 0.012, 0.085, 0.022]), "", 0, 100,
                                           valinit=self.initial_filters.get(c, (0, 100)), valstep=1, color="red")
             self.sliders[c].valtext.set_fontsize(8.5)

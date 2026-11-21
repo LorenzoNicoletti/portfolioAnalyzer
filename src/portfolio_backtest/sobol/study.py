@@ -18,6 +18,7 @@ import pandas as pd
 from scipy.stats import qmc
 
 from ..engine import DEFAULT_INVEST, DEFAULT_REBALANCE, DEFAULT_START, BacktestResults, perform_backtest
+from ..data import load_prices
 from ..etfs import resolve_code
 
 
@@ -57,8 +58,9 @@ class SobolStudy:
 
 
 def run_study(etfs: Sequence[str], n_samples: int = 8192, seed: int | None = 42,
-              invest: float = DEFAULT_INVEST, start: str = DEFAULT_START, end: str | None = None,
+              invest: float = DEFAULT_INVEST, start: str | None = DEFAULT_START, end: str | None = None,
               rebalance: str = DEFAULT_REBALANCE, prices: pd.DataFrame | None = None) -> SobolStudy:
+    prices = load_prices() if prices is None else prices  # registers the workbook's ETFs
     etfs = [resolve_code(e) for e in etfs]
     allocs = np.vstack([sobol_allocations(n_samples, len(etfs), seed),
                         100 * np.eye(len(etfs))])

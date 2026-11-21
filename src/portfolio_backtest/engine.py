@@ -8,11 +8,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .data import load_prices, window
+from .data import common_start, load_prices, window
 from .etfs import Allocation, normalize_alloc, resolve_code
 
 DEFAULT_INVEST = 10_000    # EUR
-DEFAULT_START = "2006-12"  # first month all six series exist
+DEFAULT_START: str | None = None  # None: first month in which every held ETF has data
 DEFAULT_REBALANCE = "annual"
 REBALANCE_MONTHS: dict[str, int | None] = {
     "none": None, "monthly": 1, "quarterly": 3, "semiannual": 6, "annual": 12,
@@ -77,15 +77,17 @@ def metrics(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return cagr, vol, mdd
 
 
-def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str = DEFAULT_START,
+def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str | None = DEFAULT_START,
                      end: str | None = None, rebalance: str = DEFAULT_REBALANCE,
                      keep_values: bool = False, prices: pd.DataFrame | None = None) -> BacktestResults:
     """Backtest many portfolios at once.
 
     etfs:   ETF codes or ISINs, any number and order, e.g. ["WORLD", "GOLD", "BONDS"]
     allocs: (N, len(etfs)) percentages; column j is the weight of etfs[j]; each row sums to 100
+    start:  "YYYY-MM"; default: the first month in which every held ETF has data
     prices: monthly price table with ETF codes as columns (default: load_prices())
     """
+    prices = load_prices() if prices is None else prices  # loads first: registers the workbook's ETFs
     etfs = [resolve_code(e) for e in etfs]
     if rebalance not in REBALANCE_MONTHS:
         raise ValueError(f"Unknown rebalance '{rebalance}'. Use one of: {', '.join(REBALANCE_MONTHS)}")
@@ -98,9 +100,14 @@ def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str = DE
     if bad.any():
         raise ValueError(f"{bad.sum()} allocation(s) do not sum to 100%, e.g. {allocs[bad][0]}")
 
-    win = window(load_prices() if prices is None else prices, start, end)
-    px = win[etfs].to_numpy(dtype=float).copy()
+    missing_cols = [e for e in etfs if e not in prices.columns]
+    if missing_cols:
+        raise ValueError(f"No price series in the data for: {', '.join(missing_cols)}. "
+                         f"Add it with: portfolio-data add <ticker or ISIN>")
     used = (allocs > 0).any(axis=0)
+    start = start or common_start(prices, np.array(etfs)[used])
+    win = window(prices, start, end)
+    px = win[etfs].to_numpy(dtype=float).copy()
     missing = used & np.isnan(px[0])
     if missing.any():
         raise ValueError(f"No data at {start} for: " + ", ".join(np.array(etfs)[missing]))
@@ -112,12 +119,14 @@ def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str = DE
                            max_drawdown=mdd, dates=win.index, values=values if keep_values else None)
 
 
-def backtest(invest: float, alloc: Allocation, start: str = DEFAULT_START, end: str | None = None,
+def backtest(invest: float, alloc: Allocation, start: str | None = DEFAULT_START, end: str | None = None,
              rebalance: str = DEFAULT_REBALANCE, prices: pd.DataFrame | None = None) -> BacktestResult:
     """Lump sum ``invest`` (EUR) at ``start``, held in ``alloc`` and reset to it every rebalancing period.
 
     alloc: e.g. {"WORLD": 60, "BONDS": 40}, or 6 percentages in order EM, WORLD, SP500, BONDS, GOLD, EUROPE.
+    start: "YYYY-MM"; default: the first month in which every held ETF has data
     """
+    prices = load_prices() if prices is None else prices
     a = normalize_alloc(alloc)
     r = perform_backtest(invest, list(a), [list(a.values())], start, end, rebalance,
                          keep_values=True, prices=prices)

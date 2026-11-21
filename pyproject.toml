@@ -16,6 +16,7 @@ dependencies = [
     "matplotlib>=3.7",
     "scipy>=1.10",
     "openpyxl>=3.1",
+    "mcp>=1.9",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +26,7 @@ dev = ["pytest>=7"]
 [project.scripts]
 portfolio-backtest = "portfolio_backtest.cli:main"
 portfolio-sobol = "portfolio_backtest.sobol.cli:main"
+portfolio-data = "portfolio_backtest.data_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

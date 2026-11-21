@@ -74,5 +74,14 @@ def test_missing_data_at_start(prices):
     p = prices.copy()
     p.loc[:"2008-01-01", "EM"] = np.nan
     with pytest.raises(ValueError, match="No data"):
-        backtest(10_000, {"EM": 50, "WORLD": 50}, prices=p)
-    backtest(10_000, {"WORLD": 100}, prices=p)  # unheld NaN column is fine
+        backtest(10_000, {"EM": 50, "WORLD": 50}, start="2006-12", prices=p)
+    r = backtest(10_000, {"EM": 50, "WORLD": 50}, prices=p)  # default start: first month EM has data
+    assert r.values.index[0] == pd.Timestamp("2008-02-01")
+    backtest(10_000, {"WORLD": 100}, start="2006-12", prices=p)  # unheld NaN column is fine
+
+
+def test_default_start_is_first_common_month(prices):
+    p = prices.copy()
+    p.loc[:"2009-12-01", "GOLD"] = np.nan
+    assert backtest(10_000, {"WORLD": 100}, prices=p).values.index[0] == pd.Timestamp("2006-12-01")
+    assert backtest(10_000, {"WORLD": 50, "GOLD": 50}, prices=p).values.index[0] == pd.Timestamp("2010-01-01")
