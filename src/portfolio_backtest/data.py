@@ -78,7 +78,9 @@ def _etf_for(isin: str, info: pd.DataFrame) -> ETF:
     row = info.loc[isin] if isin in info.index else pd.Series(dtype=object)
     code = str(row.get("Code") or "").strip().upper() or isin
     name = str(row.get("Fund") or "").strip() or isin
-    return ETF(code, isin, name)
+    tickers = [t.strip().upper() for t in str(row.get("Tickers") or "").split(",") if t.strip()]
+    ticker = code if code in tickers else (tickers[0] if tickers else "")  # the code if it is a ticker
+    return ETF(code, isin, name, ticker)
 
 
 @lru_cache(maxsize=4)

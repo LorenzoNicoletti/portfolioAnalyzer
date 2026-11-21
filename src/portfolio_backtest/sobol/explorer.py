@@ -1,12 +1,13 @@
 """Interactive volatility vs CAGR chart of a Sobol study.
 
 - One dot per Sobol portfolio, coloured by CAGR / volatility (jet: blue = low, red = high).
-- Grey stars: 100 % in one ETF. White star: the reference mix (--mix). Circles: the notable portfolios.
+- Grey diamonds: 100 % in one ETF, labelled with its ticker. White diamond: the reference mix (--mix).
+  Circles: the notable portfolios.
 - Click a dot to show or hide its allocation.
 - Right-hand strip: one filter per ETF (tick box + min-max slider); only portfolios matching ALL
   ticked filters stay visible. Reset switches every filter off.
 - "Custom mix" Qt side panel (Qt backend only): type other weights, "Plot" shows that mix as a
-  black star, "Back to reference" removes it.
+  black diamond, "Back to reference" removes it.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ class SobolExplorer:
         r = study.result
         self.n = study.n_samples
         self.vol, self.cagr, self.ratio = r.volatility, r.cagr, study.ratio
-        self.visible = np.ones(len(study.allocs), bool)  # stars are always visible
+        self.visible = np.ones(len(study.allocs), bool)  # the diamonds are always visible
         self.labels: dict[int, object] = {}               # portfolio index -> click label
 
         use_style()
@@ -67,41 +68,53 @@ class SobolExplorer:
         ax, n, s = self.ax, self.n, self.study
         vol, cagr, ratio = self.vol, self.cagr, self.ratio
 
-        self.cloud = ax.scatter(vol[:n], cagr[:n], c=ratio[:n], cmap="jet", s=26, alpha=0.7, linewidths=0,
-                                zorder=2, label=f"Sobol portfolios ({n:,})", rasterized=True)
+        self.cloud = ax.scatter(vol[:n], cagr[:n], c=ratio[:n], cmap="jet", s=26, alpha=0.7,
+                                edgecolors="black", linewidths=0.3, zorder=2, label=f"Sobol portfolios ({n:,})", rasterized=True)
         self.cloud.set_clim(ratio[:n].min(), ratio[:n].max())  # fixed scale, so filtering keeps the colours
         self.fig.colorbar(self.cloud, cax=self.fig.add_axes([0.708, 0.08, 0.012, 0.82]), label="CAGR / volatility")
 
-        ax.scatter(vol[s.singles], cagr[s.singles], marker="*", s=160, color="#9e9e9e", edgecolors="black",
+        ax.scatter(vol[s.singles], cagr[s.singles], marker="D", s=70, color="#9e9e9e", edgecolors="black",
                    linewidths=0.8, zorder=4, label="100% in one ETF")
         for i in s.singles:
-            ax.annotate(ETFS[s.etfs[i - n]].name, (vol[i], cagr[i]), xytext=(9, -3),
+            ax.annotate(ETFS[s.etfs[i - n]].label, (vol[i], cagr[i]), xytext=(8, -3),
                         textcoords="offset points", fontsize=8.5)
 
         x, y = self._backtest_mix(list(self.my_mix.values()))
-        ax.scatter(x, y, marker="*", s=320, color="white", edgecolor="black", lw=1.4, zorder=6,
+        ax.scatter(x, y, marker="D", s=120, color="white", edgecolor="black", lw=1.4, zorder=6,
                    label="Reference mix")
         ax.annotate(f"Reference mix\nCAGR {y:.1%} | Vol {x:.1%}", (x, y), xytext=(10, -12),
                     textcoords="offset points", va="top", fontsize=9, fontweight="bold", zorder=7, bbox=LABEL_BOX)
 
-        self.my_star = ax.scatter([], [], marker="*", s=320, color="black", edgecolor="white", lw=1.2, zorder=6,
+        self.my_star = ax.scatter([], [], marker="D", s=120, color="black", edgecolor="white", lw=1.2, zorder=6,
                                   label="Edited mix")
         self.my_label = ax.annotate("", (0, 0), xytext=(10, 14), textcoords="offset points", va="bottom",
                                     fontsize=9, fontweight="bold", zorder=7, bbox=LABEL_BOX)
 
-        for name, i in s.picks().items():
-            ax.scatter(vol[i], cagr[i], marker="o", s=110, facecolor="none", edgecolor="black", lw=1.6, zorder=5)
-            ax.annotate(name, (vol[i], cagr[i]), xytext=(-8, 8), textcoords="offset points", fontsize=8.5, ha="right")
+        picks = s.picks()
+        for i in picks.values():  # red circles around the notable portfolios
+            ax.scatter(vol[i], cagr[i], marker="o", s=110, facecolor="none", edgecolor="red", lw=1.6, zorder=5)
 
         lo, hi = ax.get_xlim()
-        ax.set_xlim(lo, hi + 0.10 * (hi - lo))  # room on the right for the star labels
+        ax.set_xlim(lo, hi + 0.10 * (hi - lo))  # room on the right for the diamond labels
+
+        # labels of the notable portfolios, on two lines, placed after the limits are final so they can be
+        # kept inside the axes: to the right of the circle near the left edge, below it near the top
+        two_lines = {"Highest CAGR": "Highest\nCAGR", "Lowest volatility": "Lowest\nvolatility",
+                     "Best CAGR / volatility": "Best CAGR /\nvolatility"}
+        for name, i in picks.items():
+            fx, fy = ax.transAxes.inverted().transform(ax.transData.transform((vol[i], cagr[i])))
+            dx, ha = (10, "left") if fx < 0.25 else (-10, "right")
+            dy, va = (-10, "top") if fy > 0.85 else (10, "bottom")
+            ax.annotate(two_lines.get(name, name), (vol[i], cagr[i]), xytext=(dx, dy), textcoords="offset points",
+                        ha=ha, va=va, multialignment=ha, fontsize=8.5, color="red", zorder=7, bbox=LABEL_BOX)
         ax.set_xlabel("Volatility (annualised)")
         ax.set_ylabel("CAGR")
         ax.xaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
         d = s.result.dates
         ax.set_title(f"Sobol study: {n:,} allocations, {d[0]:%b %Y} - {d[-1]:%b %Y}, {self.rebalance} rebalancing\n"
-                     "Click a point to show its allocation in %:  " + " / ".join(s.etfs), fontsize=11)
+                     "Click a point to show its allocation in %:  " + " / ".join(ETFS[c].label for c in s.etfs),
+                     fontsize=11)
         ax.legend(loc="lower right", fontsize=8.5)
         ax.grid(True, color="#dddddd", lw=0.6)
 
@@ -116,10 +129,9 @@ class SobolExplorer:
             y = top - k * row_h
             cax = fig.add_axes([0.770, y, 0.075, 0.045])
             cax.set_frame_on(False)
-            self.checks[c] = CheckButtons(cax, [c], [c in self.initial_filters],
+            self.checks[c] = CheckButtons(cax, [ETFS[c].label], [c in self.initial_filters],
                                           frame_props={"edgecolor": "black"}, check_props={"facecolor": "red"})
             self.checks[c].labels[0].set_fontsize(9)
-            fig.text(0.775, y - 0.006, ETFS[c].name[:30], fontsize=7, color="#777777")  # short: no overlap
             self.sliders[c] = RangeSlider(fig.add_axes([0.850, y + 0.012, 0.085, 0.022]), "", 0, 100,
                                           valinit=self.initial_filters.get(c, (0, 100)), valstep=1, color="red")
             self.sliders[c].valtext.set_fontsize(8.5)
@@ -139,7 +151,7 @@ class SobolExplorer:
             self.sliders[c].valtext.set_text(rng)
             if self.checks[c].get_status()[0]:
                 keep &= (allocs[:n, j] >= lo) & (allocs[:n, j] <= hi)
-                active.append(f"{c} {rng}")
+                active.append(f"{ETFS[c].label} {rng}")
         self.cloud.set_offsets(np.column_stack([self.vol[:n][keep], self.cagr[:n][keep]]))
         self.cloud.set_array(self.ratio[:n][keep])
         self.visible[:n] = keep
@@ -185,7 +197,7 @@ class SobolExplorer:
 
     # ----------------------------------------------------------- edited mix --
     def plot_mix(self, weights) -> None:
-        """Black star at the mix ``weights`` (% in my_mix order); hidden when it equals the reference mix."""
+        """Black diamond at the mix ``weights`` (% in my_mix order); hidden when it equals the reference mix."""
         edited = list(weights) != list(self.my_mix.values())
         if edited:
             x, y = self._backtest_mix(list(weights))

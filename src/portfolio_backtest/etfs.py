@@ -19,15 +19,21 @@ class ETF:
     code: str
     isin: str
     name: str
+    ticker: str = ""  # exchange ticker shown in charts; falls back to the code
+
+    @property
+    def label(self) -> str:
+        """Short name for chart labels: the ticker, or the code if no ticker is known."""
+        return self.ticker or self.code
 
 
 BUILTIN_ETFS: tuple[ETF, ...] = (
-    ETF("EM", "LU1437017350", "Amundi MSCI EM"),
-    ETF("WORLD", "IE00BD4TXV59", "UBS MSCI World"),
-    ETF("SP500", "IE00BFMXXD54", "Vanguard S&P 500"),
-    ETF("BONDS", "IE00B3VTN290", "iShares EUR Govt 7-10yr"),
-    ETF("GOLD", "IE00B4ND3602", "iShares Physical Gold"),
-    ETF("EUROPE", "LU0908500753", "Amundi Stoxx Europe 600"),
+    ETF("EM", "LU1437017350", "Amundi MSCI EM", "AEME"),
+    ETF("WORLD", "IE00BD4TXV59", "UBS MSCI World", "UETW"),
+    ETF("SP500", "IE00BFMXXD54", "Vanguard S&P 500", "VUAA"),
+    ETF("BONDS", "IE00B3VTN290", "iShares EUR Govt 7-10yr", "SXRQ"),
+    ETF("GOLD", "IE00B4ND3602", "iShares Physical Gold", "PPFB"),
+    ETF("EUROPE", "LU0908500753", "Amundi Stoxx Europe 600", "LYP6"),
 )
 
 # All known ETFs: the built-in ones, plus the ones registered from the data workbook.

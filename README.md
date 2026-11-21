@@ -50,11 +50,11 @@ The default mix is the basis allocation EM 13 / WORLD 25 / SP500 10 / BONDS 20 /
 ### Sobol study
 
 ```bash
-portfolio-sobol                                            # 8192 mixes of EM, WORLD, BONDS, GOLD, EUROPE; default mix as the white star
+portfolio-sobol                                            # 8192 mixes of EM, WORLD, BONDS, GOLD, EUROPE; default mix as the white diamond
 portfolio-sobol --etfs WORLD BONDS GOLD --samples 4096
 portfolio-sobol --etfs EUNL SP500I BONDS GOLD              # ETFs added with portfolio-data work too
 portfolio-sobol --filter GOLD=10-30 --rebalance quarterly
-portfolio-sobol --mix WORLD=50 BONDS=40 GOLD=10            # the white reference star
+portfolio-sobol --mix WORLD=50 BONDS=40 GOLD=10            # the white reference diamond
 ```
 
 ![Sobol study](docs/sobol.png)

@@ -1,6 +1,6 @@
 """Command line: run a Sobol study and open the interactive chart.
 
-    portfolio-sobol                                      EM, WORLD, BONDS, GOLD, EUROPE; your default mix as the white star
+    portfolio-sobol                                      EM, WORLD, BONDS, GOLD, EUROPE; your default mix as the white diamond
     portfolio-sobol --etfs WORLD BONDS GOLD --samples 4096
     portfolio-sobol --filter GOLD=25-100 --rebalance quarterly
 """
@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--etfs", nargs="+", default=list(DEFAULT_STUDY_ETFS), help="ETFs in the study")
     ap.add_argument("--samples", type=int, default=8192, help="number of Sobol portfolios (default 8192)")
     ap.add_argument("--seed", type=int, default=42, help="scrambling seed (default 42)")
-    ap.add_argument("--mix", nargs="+", metavar="CODE=PCT", help="reference mix shown as a white star "
+    ap.add_argument("--mix", nargs="+", metavar="CODE=PCT", help="reference mix shown as a white diamond "
                     "(default: " + " ".join(f"{c}={p:g}" for c, p in DEFAULT_ALLOC.items()) + ")")
     ap.add_argument("--filter", nargs="+", default=[], metavar="CODE=MIN-MAX", help="filters active at start")
     ap.add_argument("--invest", type=float, default=DEFAULT_INVEST)
