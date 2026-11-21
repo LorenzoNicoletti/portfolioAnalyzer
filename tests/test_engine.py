@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from portfolio_backtest.engine import REBALANCE_MONTHS, backtest, metrics, perform_backtest, simulate_values
+from portfolio_backtest.engine import REBALANCE_MONTHS, metrics, perform_backtest, simulate_values
+
+
+def backtest(invest, alloc, start=None, end=None, prices=None):
+    """One portfolio {ticker: %}; returns its monthly values as a Series."""
+    r = perform_backtest(invest, list(alloc), [list(alloc.values())], start, end, keep_values=True, prices=prices)
+    return pd.Series(r.values[:, 0], index=r.dates), r
 
 
 def loop_values(invest, w, prices, every):
@@ -27,18 +33,19 @@ def test_vectorised_matches_loop(prices, every):
 
 def test_many_portfolios_match_single_runs(prices):
     allocs = np.array([[60, 40, 0], [0, 50, 50], [100, 0, 0]])
-    etfs = ["WORLD", "BONDS", "GOLD"]
+    etfs = ["UETW", "SXRQ", "PPFB"]
     many = perform_backtest(10_000, etfs, allocs, prices=prices)
     for k, row in enumerate(allocs):
-        one = backtest(10_000, dict(zip(etfs, row)), prices=prices)
-        assert one.final_value == pytest.approx(many.final_value[k], rel=1e-12)
-        assert one.volatility == pytest.approx(many.volatility[k], rel=1e-12)
+        held = {e: w for e, w in zip(etfs, row) if w > 0}
+        _, one = backtest(10_000, held, start="2006-12", prices=prices)
+        assert one.final_value[0] == pytest.approx(many.final_value[k], rel=1e-12)
+        assert one.volatility[0] == pytest.approx(many.volatility[k], rel=1e-12)
 
 
 def test_single_etf_follows_its_price(prices):
-    r = backtest(1_000, {"GOLD": 100}, prices=prices)
-    expected = 1_000 * prices["GOLD"] / prices["GOLD"].iloc[0]
-    np.testing.assert_allclose(r.values.to_numpy(), expected.to_numpy(), rtol=1e-12)
+    values, _ = backtest(1_000, {"PPFB": 100}, prices=prices)
+    expected = 1_000 * prices["PPFB"] / prices["PPFB"].iloc[0]
+    np.testing.assert_allclose(values.to_numpy(), expected.to_numpy(), rtol=1e-12)
 
 
 def test_metrics_on_known_series():
@@ -53,17 +60,17 @@ def test_metrics_on_known_series():
 
 
 def test_window_and_isin_input(prices):
-    r = backtest(10_000, {"IE00BD4TXV59": 100}, start="2010-01", end="2015-12", prices=prices)
-    assert r.values.index[0] == pd.Timestamp("2010-01-01")
-    assert r.values.index[-1] == pd.Timestamp("2015-12-01")
+    values, _ = backtest(10_000, {"IE00BD4TXV59": 100}, start="2010-01", end="2015-12", prices=prices)
+    assert values.index[0] == pd.Timestamp("2010-01-01")
+    assert values.index[-1] == pd.Timestamp("2015-12-01")
 
 
 @pytest.mark.parametrize("kwargs, msg", [
-    (dict(etfs=["WORLD"], allocs=[[90]]), "sum to 100"),
-    (dict(etfs=["WORLD", "GOLD"], allocs=[[110, -10]]), "Negative"),
-    (dict(etfs=["WORLD"], allocs=[[50, 50]]), "columns"),
+    (dict(etfs=["UETW"], allocs=[[90]]), "sum to 100"),
+    (dict(etfs=["UETW", "PPFB"], allocs=[[110, -10]]), "Negative"),
+    (dict(etfs=["UETW"], allocs=[[50, 50]]), "columns"),
     (dict(etfs=["NOPE"], allocs=[[100]]), "Unknown ETF"),
-    (dict(etfs=["WORLD"], allocs=[[100]], rebalance="weekly"), "Unknown rebalance"),
+    (dict(etfs=["UETW"], allocs=[[100]], rebalance="weekly"), "Unknown rebalance"),
 ])
 def test_invalid_input(prices, kwargs, msg):
     with pytest.raises(ValueError, match=msg):
@@ -72,16 +79,16 @@ def test_invalid_input(prices, kwargs, msg):
 
 def test_missing_data_at_start(prices):
     p = prices.copy()
-    p.loc[:"2008-01-01", "EM"] = np.nan
+    p.loc[:"2008-01-01", "AEME"] = np.nan
     with pytest.raises(ValueError, match="No data"):
-        backtest(10_000, {"EM": 50, "WORLD": 50}, start="2006-12", prices=p)
-    r = backtest(10_000, {"EM": 50, "WORLD": 50}, prices=p)  # default start: first month EM has data
-    assert r.values.index[0] == pd.Timestamp("2008-02-01")
-    backtest(10_000, {"WORLD": 100}, start="2006-12", prices=p)  # unheld NaN column is fine
+        backtest(10_000, {"AEME": 50, "UETW": 50}, start="2006-12", prices=p)
+    values, _ = backtest(10_000, {"AEME": 50, "UETW": 50}, prices=p)  # default start: first month AEME has data
+    assert values.index[0] == pd.Timestamp("2008-02-01")
+    backtest(10_000, {"UETW": 100}, start="2006-12", prices=p)  # unheld NaN column is fine
 
 
 def test_default_start_is_first_common_month(prices):
     p = prices.copy()
-    p.loc[:"2009-12-01", "GOLD"] = np.nan
-    assert backtest(10_000, {"WORLD": 100}, prices=p).values.index[0] == pd.Timestamp("2006-12-01")
-    assert backtest(10_000, {"WORLD": 50, "GOLD": 50}, prices=p).values.index[0] == pd.Timestamp("2010-01-01")
+    p.loc[:"2009-12-01", "PPFB"] = np.nan
+    assert backtest(10_000, {"UETW": 100}, prices=p)[0].index[0] == pd.Timestamp("2006-12-01")
+    assert backtest(10_000, {"UETW": 50, "PPFB": 50}, prices=p)[0].index[0] == pd.Timestamp("2010-01-01")

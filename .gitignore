@@ -1,6 +1,5 @@
 # Price data: Curvo Backtest export, not ours to redistribute
-data/*
-!data/README.md
+data/
 
 # Python
 __pycache__/

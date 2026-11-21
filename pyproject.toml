@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "portfolio-backtest"
-version = "0.1.0"
+version = "0.2.0"
 description = "Backtest fixed-weight ETF portfolios and explore allocations with a Sobol study"
 readme = "README.md"
 license = "MIT"
@@ -24,9 +24,7 @@ qt = ["PyQt5>=5.15"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-portfolio-backtest = "portfolio_backtest.cli:main"
-portfolio-sobol = "portfolio_backtest.sobol.cli:main"
-portfolio-data = "portfolio_backtest.data_cli:main"
+portfolio = "portfolio_backtest.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

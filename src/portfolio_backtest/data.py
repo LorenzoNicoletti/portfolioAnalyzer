@@ -1,12 +1,12 @@
 """The data workbook: monthly EUR price series from Curvo Backtest, plus one row of info per ETF.
 
-The workbook is created and extended from Curvo with the ``portfolio-data`` command (see curvo.py)
-and is git-ignored. Layout (see data/README.md):
+The workbook is created and extended from Curvo with ``portfolio data update`` / ``portfolio data add``
+(see curvo.py) and is git-ignored. Layout (see "The data workbook" in README.md):
 
-- sheet ``Prices EUR``: row 1 ETF codes, row 2 ISINs (from column B on), months in column A from row 3 on.
-- sheet ``Fund info``:  one row per ETF (Code, Fund, ISIN, Tickers, ...), then a blank row and notes.
+- sheet ``Prices EUR``: row 1 tickers, row 2 ISINs (from column B on), months in column A from row 3 on.
+- sheet ``Fund info``:  one row per ETF (Ticker, Fund, ISIN, Tickers, ...), then a blank row and notes.
 
-Loading the workbook registers every ETF in it (etfs.register), so codes of added ETFs work everywhere.
+Loading the workbook registers every ETF in it (etfs.register), so the tickers of added ETFs work everywhere.
 The file is looked up in this order: an explicit path, the ``PORTFOLIO_BACKTEST_DATA``
 environment variable, then ``data/Curvo_ETF_Monthly_EUR.xlsx`` in the repository.
 """
@@ -21,13 +21,13 @@ from pathlib import Path
 import pandas as pd
 
 from . import etfs as registry
-from .etfs import ETF, code_for_isin, register
+from .etfs import ETF, register, ticker_for_isin
 
 DATA_ENV_VAR = "PORTFOLIO_BACKTEST_DATA"
 DEFAULT_DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "Curvo_ETF_Monthly_EUR.xlsx"
 PRICES_SHEET = "Prices EUR"
 INFO_SHEET = "Fund info"
-INFO_COLUMNS = ["Code", "Fund", "ISIN", "Tickers", "Tracked index", "TER %", "Fund inception",
+INFO_COLUMNS = ["Ticker", "Fund", "ISIN", "Tickers", "Tracked index", "TER %", "Fund inception",
                 "Series start", "Series end", "Dividends", "Curvo Backtest link", "Retrieved"]
 
 
@@ -37,8 +37,8 @@ def data_path(path: str | Path | None = None, must_exist: bool = True) -> Path:
     path = Path(path)
     if must_exist and not path.is_file():
         raise FileNotFoundError(
-            f"Price data not found at {path}. Create it from Curvo with: portfolio-data update "
-            f"(or pass --data / set {DATA_ENV_VAR}). See data/README.md."
+            f"Price data not found at {path}. Create it from Curvo with: portfolio data update "
+            f"(or pass --data / set {DATA_ENV_VAR}). See README.md."
         )
     return path
 
@@ -71,30 +71,30 @@ def read_workbook(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def _etf_for(isin: str, info: pd.DataFrame) -> ETF:
-    """The ETF of a price column: the known one for this ISIN, else Code and Fund from the info sheet."""
-    known = code_for_isin(isin)
+    """The ETF of a price column: the known one for this ISIN, else Ticker and Fund from the info sheet.
+
+    Without a Ticker cell (older workbooks), the first of the fund's Curvo tickers is used, else the ISIN.
+    """
+    known = ticker_for_isin(isin)
     if known:
         return registry.ETFS[known]
     row = info.loc[isin] if isin in info.index else pd.Series(dtype=object)
-    code = str(row.get("Code") or "").strip().upper() or isin
-    name = str(row.get("Fund") or "").strip() or isin
-    tickers = [t.strip().upper() for t in str(row.get("Tickers") or "").split(",") if t.strip()]
-    ticker = code if code in tickers else (tickers[0] if tickers else "")  # the code if it is a ticker
-    return ETF(code, isin, name, ticker)
+    curvo_tickers = [t.strip().upper() for t in str(row.get("Tickers") or "").split(",") if t.strip()]
+    ticker = str(row.get("Ticker") or "").strip().upper() or (curvo_tickers[0] if curvo_tickers else isin)
+    return ETF(ticker, isin, str(row.get("Fund") or "").strip() or isin)
 
 
 @lru_cache(maxsize=4)
 def _load(path: Path) -> pd.DataFrame:
     prices, info = read_workbook(path)
-    codes = [register(_etf_for(isin, info)).code for isin in prices.columns]
-    prices.columns = codes
+    prices.columns = [register(_etf_for(isin, info)).ticker for isin in prices.columns]
     return prices
 
 
 def load_prices(path: str | Path | None = None) -> pd.DataFrame:
-    """All monthly EUR series: columns = ETF codes, index = month start. Read once per file, then cached.
+    """All monthly EUR series: columns = tickers, index = month start. Read once per file, then cached.
 
-    Also registers every ETF in the workbook, so their codes can be used in allocations.
+    Also registers every ETF in the workbook, so their tickers can be used in allocations.
     """
     return _load(data_path(path))
 
@@ -112,12 +112,12 @@ def write_workbook(path: Path, prices: pd.DataFrame, info: pd.DataFrame, notes: 
 
     bold = Font(bold=True)
     info = info.reindex(prices.columns)
-    codes = [str(c) if pd.notna(c) else isin for isin, c in zip(prices.columns, info.get("Code", info.index))]
+    tickers = [str(t) if pd.notna(t) else isin for isin, t in zip(prices.columns, info.get("Ticker", info.index))]
 
     wb = Workbook()
     ws = wb.active
     ws.title = PRICES_SHEET
-    ws.append(["Code"] + codes)
+    ws.append(["Ticker"] + tickers)
     ws.append(["ISIN"] + list(prices.columns))
     for month, row in prices.sort_index().iterrows():
         ws.append([month.to_pydatetime()] + [None if pd.isna(v) else float(v) for v in row])
@@ -151,13 +151,18 @@ def write_workbook(path: Path, prices: pd.DataFrame, info: pd.DataFrame, notes: 
 
 
 # ------------------------------------------------------------------ windows --
-def common_start(prices: pd.DataFrame, codes: Iterable[str]) -> str:
-    """First month ("YYYY-MM") in which every ETF in codes has data."""
-    codes = list(dict.fromkeys(codes))
-    full = prices[codes].dropna()
+def common_period(prices: pd.DataFrame, tickers: Iterable[str]) -> tuple[str, str]:
+    """First and last month ("YYYY-MM") in which every ETF in tickers has data."""
+    tickers = list(dict.fromkeys(tickers))
+    full = prices[tickers].dropna()
     if full.empty:
-        raise ValueError(f"No month in which all of {', '.join(codes)} have data.")
-    return f"{full.index[0]:%Y-%m}"
+        raise ValueError(f"No month in which all of {', '.join(tickers)} have data.")
+    return f"{full.index[0]:%Y-%m}", f"{full.index[-1]:%Y-%m}"
+
+
+def common_start(prices: pd.DataFrame, tickers: Iterable[str]) -> str:
+    """First month ("YYYY-MM") in which every ETF in tickers has data."""
+    return common_period(prices, tickers)[0]
 
 
 def window(prices: pd.DataFrame, start: str, end: str | None = None) -> pd.DataFrame:

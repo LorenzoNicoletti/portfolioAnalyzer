@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .data import common_start, load_prices, window
-from .etfs import Allocation, normalize_alloc, resolve_code
+from .data import common_period, load_prices, window
+from .etfs import resolve_ticker
 
 DEFAULT_INVEST = 10_000    # EUR
 DEFAULT_START: str | None = None  # None: first month in which every held ETF has data
@@ -22,7 +22,7 @@ REBALANCE_MONTHS: dict[str, int | None] = {
 @dataclass
 class BacktestResults:
     """Many portfolios at once: one entry per portfolio (arrays of length N)."""
-    etfs: list[str]           # ETF codes, column j of allocs is etfs[j]
+    etfs: list[str]           # tickers, column j of allocs is etfs[j]
     allocs: np.ndarray        # (N, K) allocations in %
     final_value: np.ndarray   # (N,) EUR
     cagr: np.ndarray          # (N,) compound annual growth rate, 0.079 = 7.9 %
@@ -31,15 +31,6 @@ class BacktestResults:
     dates: pd.DatetimeIndex = field(repr=False)
     values: np.ndarray | None = field(default=None, repr=False)  # (T, N) EUR, if keep_values=True
 
-
-@dataclass
-class BacktestResult:
-    """A single portfolio."""
-    final_value: float
-    cagr: float
-    volatility: float
-    max_drawdown: float
-    values: pd.Series = field(repr=False)  # monthly portfolio value in EUR
 
 
 def simulate_values(invest: float, weights: np.ndarray, prices: np.ndarray,
@@ -82,13 +73,14 @@ def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str | No
                      keep_values: bool = False, prices: pd.DataFrame | None = None) -> BacktestResults:
     """Backtest many portfolios at once.
 
-    etfs:   ETF codes or ISINs, any number and order, e.g. ["WORLD", "GOLD", "BONDS"]
+    etfs:   tickers or ISINs, any number and order, e.g. ["UETW", "PPFB", "SXRQ"]
     allocs: (N, len(etfs)) percentages; column j is the weight of etfs[j]; each row sums to 100
     start:  "YYYY-MM"; default: the first month in which every held ETF has data
-    prices: monthly price table with ETF codes as columns (default: load_prices())
+    end:    "YYYY-MM"; default: the last month in which every held ETF has data
+    prices: monthly price table with tickers as columns (default: load_prices())
     """
     prices = load_prices() if prices is None else prices  # loads first: registers the workbook's ETFs
-    etfs = [resolve_code(e) for e in etfs]
+    etfs = [resolve_ticker(e) for e in etfs]
     if rebalance not in REBALANCE_MONTHS:
         raise ValueError(f"Unknown rebalance '{rebalance}'. Use one of: {', '.join(REBALANCE_MONTHS)}")
     allocs = np.atleast_2d(np.asarray(allocs, dtype=float))
@@ -103,9 +95,10 @@ def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str | No
     missing_cols = [e for e in etfs if e not in prices.columns]
     if missing_cols:
         raise ValueError(f"No price series in the data for: {', '.join(missing_cols)}. "
-                         f"Add it with: portfolio-data add <ticker or ISIN>")
+                         f"Add it with: portfolio data add <ticker or ISIN>")
     used = (allocs > 0).any(axis=0)
-    start = start or common_start(prices, np.array(etfs)[used])
+    first, last = common_period(prices, np.array(etfs)[used])
+    start, end = start or first, end or last
     win = window(prices, start, end)
     px = win[etfs].to_numpy(dtype=float).copy()
     missing = used & np.isnan(px[0])
@@ -117,23 +110,3 @@ def perform_backtest(invest: float, etfs: Sequence[str], allocs, start: str | No
     cagr, vol, mdd = metrics(values)
     return BacktestResults(etfs=etfs, allocs=allocs, final_value=values[-1], cagr=cagr, volatility=vol,
                            max_drawdown=mdd, dates=win.index, values=values if keep_values else None)
-
-
-def backtest(invest: float, alloc: Allocation, start: str | None = DEFAULT_START, end: str | None = None,
-             rebalance: str = DEFAULT_REBALANCE, prices: pd.DataFrame | None = None) -> BacktestResult:
-    """Lump sum ``invest`` (EUR) at ``start``, held in ``alloc`` and reset to it every rebalancing period.
-
-    alloc: e.g. {"WORLD": 60, "BONDS": 40}, or 6 percentages in order EM, WORLD, SP500, BONDS, GOLD, EUROPE.
-    start: "YYYY-MM"; default: the first month in which every held ETF has data
-    """
-    prices = load_prices() if prices is None else prices
-    a = normalize_alloc(alloc)
-    r = perform_backtest(invest, list(a), [list(a.values())], start, end, rebalance,
-                         keep_values=True, prices=prices)
-    return BacktestResult(
-        final_value=float(r.final_value[0]),
-        cagr=float(r.cagr[0]),
-        volatility=float(r.volatility[0]),
-        max_drawdown=float(r.max_drawdown[0]),
-        values=pd.Series(r.values[:, 0], index=r.dates),
-    )

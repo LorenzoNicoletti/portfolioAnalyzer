@@ -76,7 +76,7 @@ class SobolExplorer:
         ax.scatter(vol[s.singles], cagr[s.singles], marker="D", s=70, color="#9e9e9e", edgecolors="black",
                    linewidths=0.8, zorder=4, label="100% in one ETF")
         for i in s.singles:
-            ax.annotate(ETFS[s.etfs[i - n]].label, (vol[i], cagr[i]), xytext=(8, -3),
+            ax.annotate(s.etfs[i - n], (vol[i], cagr[i]), xytext=(8, -3),
                         textcoords="offset points", fontsize=8.5)
 
         x, y = self._backtest_mix(list(self.my_mix.values()))
@@ -113,7 +113,7 @@ class SobolExplorer:
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0, decimals=0))
         d = s.result.dates
         ax.set_title(f"Sobol study: {n:,} allocations, {d[0]:%b %Y} - {d[-1]:%b %Y}, {self.rebalance} rebalancing\n"
-                     "Click a point to show its allocation in %:  " + " / ".join(ETFS[c].label for c in s.etfs),
+                     "Click a point to show its allocation in %:  " + " / ".join(s.etfs),
                      fontsize=11)
         ax.legend(loc="lower right", fontsize=8.5)
         ax.grid(True, color="#dddddd", lw=0.6)
@@ -129,7 +129,7 @@ class SobolExplorer:
             y = top - k * row_h
             cax = fig.add_axes([0.770, y, 0.075, 0.045])
             cax.set_frame_on(False)
-            self.checks[c] = CheckButtons(cax, [ETFS[c].label], [c in self.initial_filters],
+            self.checks[c] = CheckButtons(cax, [c], [c in self.initial_filters],
                                           frame_props={"edgecolor": "black"}, check_props={"facecolor": "red"})
             self.checks[c].labels[0].set_fontsize(9)
             self.sliders[c] = RangeSlider(fig.add_axes([0.850, y + 0.012, 0.085, 0.022]), "", 0, 100,
@@ -151,7 +151,7 @@ class SobolExplorer:
             self.sliders[c].valtext.set_text(rng)
             if self.checks[c].get_status()[0]:
                 keep &= (allocs[:n, j] >= lo) & (allocs[:n, j] <= hi)
-                active.append(f"{ETFS[c].label} {rng}")
+                active.append(f"{c} {rng}")
         self.cloud.set_offsets(np.column_stack([self.vol[:n][keep], self.cagr[:n][keep]]))
         self.cloud.set_array(self.ratio[:n][keep])
         self.visible[:n] = keep
@@ -219,13 +219,13 @@ class SobolExplorer:
         if not isinstance(window, QtWidgets.QMainWindow):
             return
 
-        codes = list(self.my_mix)
+        tickers = list(self.my_mix)
         panel = QtWidgets.QWidget()
         panel.setFixedWidth(320)
         form = QtWidgets.QFormLayout(panel)
         form.addRow(QtWidgets.QLabel("Weights in %; Plot is active when the sum is 100."))
         spins = {}
-        for c in codes:
+        for c in tickers:
             spins[c] = QtWidgets.QDoubleSpinBox(decimals=1, minimum=0, maximum=100, singleStep=1, suffix=" %")
             spins[c].setValue(self.my_mix[c])
             form.addRow(f"{c}  ({ETFS[c].name})".replace("&", "&&"), spins[c])  # && shows a literal & in Qt
@@ -238,7 +238,7 @@ class SobolExplorer:
         buttons.addWidget(back_btn)
         form.addRow(buttons)
 
-        weights = lambda: [spins[c].value() for c in codes]  # noqa: E731
+        weights = lambda: [spins[c].value() for c in tickers]  # noqa: E731
 
         def update_sum():
             total = sum(weights())
@@ -248,11 +248,11 @@ class SobolExplorer:
             plot_btn.setEnabled(ok)
 
         def back():
-            for c in codes:
+            for c in tickers:
                 spins[c].setValue(self.my_mix[c])
             self.plot_mix(weights())
 
-        for c in codes:
+        for c in tickers:
             spins[c].valueChanged.connect(update_sum)
         plot_btn.clicked.connect(lambda: self.plot_mix(weights()))
         back_btn.clicked.connect(back)
